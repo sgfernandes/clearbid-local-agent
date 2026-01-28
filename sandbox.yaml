@@ -1,0 +1,40 @@
+# Lima VM configuration for sandboxed agent
+# Usage: limactl create --name=agent agent.yaml
+
+vmType: vz
+cpus: 2
+memory: 4GiB
+disk: 20GiB
+
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+
+# Minimal mounts - only what's needed
+mounts:
+  # User's working area (writable)
+  - location: "~/Desktop"
+    mountPoint: "/mnt/desktop"
+    writable: true
+  # Agent code (read-only)
+  - location: "~/Documents/workspace/local-agent/sandbox"
+    mountPoint: "/opt/agent"
+    writable: false
+
+# Forward agent port
+portForwards:
+  - guestPort: 9999
+    hostPort: 9999
+
+# Minimal provisioning - SDK can be installed later
+provision:
+  - mode: system
+    script: |
+      apt-get update -qq
+      apt-get install -y -qq python3 python3-pip
+
+containerd:
+  system: false
+  user: false

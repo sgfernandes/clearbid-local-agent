@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Editor
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Secrets
+.env
+
+# Private working files
+article/
+data/

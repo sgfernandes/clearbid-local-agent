@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""CLI for interacting with the sandboxed agent."""
+
+import asyncio
+import json
+import sys
+
+HOST = "127.0.0.1"
+PORT = 9999
+
+
+class AgentClient:
+    def __init__(self, host: str = HOST, port: int = PORT):
+        self.host = host
+        self.port = port
+        self.reader: asyncio.StreamReader | None = None
+        self.writer: asyncio.StreamWriter | None = None
+
+    async def connect(self):
+        self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
+
+    async def close(self):
+        if self.writer:
+            self.writer.close()
+            await self.writer.wait_closed()
+
+    async def send(self, msg: dict) -> dict:
+        if not self.writer or not self.reader:
+            raise RuntimeError("Not connected")
+        data = json.dumps(msg).encode("utf-8")
+        self.writer.write(len(data).to_bytes(4, "big"))
+        self.writer.write(data)
+        await self.writer.drain()
+        length_bytes = await self.reader.readexactly(4)
+        length = int.from_bytes(length_bytes, "big")
+        response_data = await self.reader.readexactly(length)
+        return json.loads(response_data.decode("utf-8"))
+
+    async def ping(self) -> bool:
+        response = await self.send({"type": "ping"})
+        return response.get("type") == "pong"
+
+    async def prompt(self, prompt: str) -> dict:
+        return await self.send({"type": "prompt", "prompt": prompt})
+
+
+async def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print("Usage:")
+        print("  ./client ping           Check agent is alive")
+        print("  ./client prompt <text>  Send prompt to agent")
+        sys.exit(0)
+
+    client = AgentClient()
+    try:
+        await client.connect()
+    except ConnectionRefusedError:
+        print("Error: Agent not running. Start with: make start")
+        sys.exit(1)
+
+    try:
+        cmd = sys.argv[1]
+
+        if cmd == "ping":
+            if await client.ping():
+                print("Agent is alive")
+            else:
+                print("Agent ping failed")
+                sys.exit(1)
+
+        elif cmd == "prompt":
+            if len(sys.argv) < 3:
+                print("Usage: ./client prompt <text>")
+                sys.exit(1)
+            prompt = " ".join(sys.argv[2:])
+            result = await client.prompt(prompt)
+            if result.get("type") == "response":
+                print(result.get("text", ""))
+                if result.get("cost_usd"):
+                    print(f"\n[Cost: ${result['cost_usd']:.4f}]")
+            else:
+                print(f"Error: {result.get('error')}")
+                sys.exit(1)
+
+        else:
+            print(f"Unknown command: {cmd}")
+            sys.exit(1)
+
+    finally:
+        await client.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
